@@ -10,6 +10,7 @@ Cand = Struct.new("Cand", :name, :date)
 
 dry_run = false
 verbose = false
+keyfile = nil
 
 selectors = [
     Selector.new("yearly", lambda { |old, new| new.year > old.year }),
@@ -30,6 +31,10 @@ end
 options = {}
 o = OptionParser.new do |opts|
     opts.banner = "Usage: cleanup-tarsnap [options] <PREFIX> [<PREFIX>...]"
+
+    opts.on("-k", "--keyfile STR", "Specify keyfile for tarsnap") do |v|
+        keyfile = v
+    end
 
     opts.on("-v", "--[no-]verbose", "Run verbosely") do |v|
         verbose = v
@@ -58,16 +63,17 @@ if ARGV.empty?
     exit(1)
 end
 
+keyfile_opt=if keyfile then "--keyfile #{keyfile}" else "" end
 
-#archives=bt("tarsnap --list-archives")
+archives=bt("tarsnap --list-archives #{keyfile_opt}")
 
-archives =["dev", 
-    "dev_2014-01-01_19-20-01", 
-    "dev_2015-01-01_19-20-01", 
-    "dev_2015-01-08_19-20-01", 
-    "dev_2015-01-09_19-20-01", "dev_2015-01-17_19-20-01", "dev_2015-01-18_19-20-01", "dev_2015-01-19_19-20-01", "dev_2015-01-19_16-20-00", "dev_2015-01-19_18-00-00", "dev_2015-01-19_15-38-12",
-    "dev_2015-01-19_16-03-30", "dev_2015-01-19_15-37-50", "dev_2015-01-19_16-40-00", "dev_2015-01-19_19-00-00", "dev_2015-01-19_16-03-58", "dev_2015-01-19_17-40-00", "dev_2015-01-19_18-20-00",
-    "dev_2015-01-19_20-00-00", "dev_2015-01-19_19-40-00", "dev_2015-01-19_17-00-00", "dev_2015-01-19_17-20-00", "dev_2015-01-19_18-40-00"]
+#archives =["dev", 
+#    "dev_2014-01-01_19-20-01", 
+#    "dev_2015-01-01_19-20-01", 
+#    "dev_2015-01-08_19-20-01", 
+#    "dev_2015-01-09_19-20-01", "dev_2015-01-17_19-20-01", "dev_2015-01-18_19-20-01", "dev_2015-01-19_19-20-01", "dev_2015-01-19_16-20-00", "dev_2015-01-19_18-00-00", "dev_2015-01-19_15-38-12",
+#    "dev_2015-01-19_16-03-30", "dev_2015-01-19_15-37-50", "dev_2015-01-19_16-40-00", "dev_2015-01-19_19-00-00", "dev_2015-01-19_16-03-58", "dev_2015-01-19_17-40-00", "dev_2015-01-19_18-20-00",
+#    "dev_2015-01-19_20-00-00", "dev_2015-01-19_19-40-00", "dev_2015-01-19_17-00-00", "dev_2015-01-19_17-20-00", "dev_2015-01-19_18-40-00"]
 
 ARGV.each do |prefix|
     re = /^#{prefix}_(\d+)-(\d+)-(\d+)_(\d+)-(\d+)-(\d+)$/
@@ -114,7 +120,7 @@ ARGV.each do |prefix|
 
     to_delete.each do |n|
         if not dry_run
-            bt("tarsnap -df #{n}")
+            bt("tarsnap -d #{keyfile_opt} -f #{n}")
         else
             puts("Delete: #{n}")
         end
