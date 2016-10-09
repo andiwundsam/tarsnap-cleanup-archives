@@ -11,6 +11,9 @@ Cand = Struct.new("Cand", :name, :date)
 dry_run = false
 verbose = false
 keyfile = nil
+cachedir = nil
+archives_log = nil
+archives_max_age = 4 * 3600
 
 selectors = [
     Selector.new("yearly", lambda { |old, new| new.year > old.year }),
@@ -28,12 +31,45 @@ def bt(command)
     res
 end
 
+def parse_interval(v)
+    match = /(\d+)\s*(\w+)/.match(v)
+    if not match
+        raise "Invalid time spec: #{v}"
+    end
+    (n, u) = match.captures
+    return case u
+        when /^s(ec(ond?)?s?)?/
+            return n
+        when /^m(in(utes?)?s?)?/
+            return n * 60
+        when /^h(ours?)?/
+            return n * 60 * 60
+        when /^d(ays?)?/
+            return n * 60 * 60 * 24
+        else
+            raise "Invalid unit specified: #{u}"
+        end
+end
+
+
 options = {}
 o = OptionParser.new do |opts|
     opts.banner = "Usage: cleanup-tarsnap [options] <PREFIX> [<PREFIX>...]"
 
+    opts.on("-A", "--archives-cache STR", "Specify file to cache --list-archives result in") do |v|
+        archives_log = v
+    end
+
+    opts.on("--archives-cache-max-age STR", "Specify the max age for the list-archives-cache (def: 4h)") do |v|
+        archives_max_age = parse_interval(v)
+    end
+
     opts.on("-k", "--keyfile STR", "Specify keyfile for tarsnap") do |v|
         keyfile = v
+    end
+
+    opts.on("-c", "--cachedir STR", "Specify cachedir for tarsnap") do |v|
+        cachedir = v
     end
 
     opts.on("-v", "--[no-]verbose", "Run verbosely") do |v|
@@ -64,13 +100,25 @@ if ARGV.empty?
 end
 
 keyfile_opt=if keyfile then "--keyfile #{keyfile}" else "" end
+keyfile_opt=if cachedir then "#{keyfile_opt} --cachedir #{cachedir}" else keyfile_opt end
 
-archives=bt("tarsnap --list-archives #{keyfile_opt}")
+if archives_log and File.exists?(archives_log) and (Time.now() - File.mtime(archives_log)) < archives_max_age
+    puts "Reusing archives list from #{archives_log}"
+    archives = IO.readlines(archives_log).map{ |l| l.strip }
+else
+    archives=bt("tarsnap --list-archives #{keyfile_opt}")
 
-#archives =["dev", 
-#    "dev_2014-01-01_19-20-01", 
-#    "dev_2015-01-01_19-20-01", 
-#    "dev_2015-01-08_19-20-01", 
+    if archives_log
+        File.open(archives_log, "w") do |f|
+            f.puts(archives)
+        end
+    end
+end
+
+#archives =["dev",
+#    "dev_2014-01-01_19-20-01",
+#    "dev_2015-01-01_19-20-01",
+#    "dev_2015-01-08_19-20-01",
 #    "dev_2015-01-09_19-20-01", "dev_2015-01-17_19-20-01", "dev_2015-01-18_19-20-01", "dev_2015-01-19_19-20-01", "dev_2015-01-19_16-20-00", "dev_2015-01-19_18-00-00", "dev_2015-01-19_15-38-12",
 #    "dev_2015-01-19_16-03-30", "dev_2015-01-19_15-37-50", "dev_2015-01-19_16-40-00", "dev_2015-01-19_19-00-00", "dev_2015-01-19_16-03-58", "dev_2015-01-19_17-40-00", "dev_2015-01-19_18-20-00",
 #    "dev_2015-01-19_20-00-00", "dev_2015-01-19_19-40-00", "dev_2015-01-19_17-00-00", "dev_2015-01-19_17-20-00", "dev_2015-01-19_18-40-00"]
@@ -118,10 +166,11 @@ ARGV.each do |prefix|
         end
     end
 
-    to_delete.each do |n|
-        if not dry_run
-            bt("tarsnap -d #{keyfile_opt} -f #{n}")
-        else
+    if not dry_run
+        delete_str = to_delete.map { |n| "-f #{n}" }.join(" ")
+        bt("tarsnap -d #{keyfile_opt} #{delete_str}")
+    else
+        for n in to_delete
             puts("Delete: #{n}")
         end
     end
