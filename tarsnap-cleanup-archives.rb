@@ -37,6 +37,7 @@ def parse_interval(v)
         raise "Invalid time spec: #{v}"
     end
     (n, u) = match.captures
+    n = n.to_i
     return case u
         when /^s(ec(ond?)?s?)?/
             return n
